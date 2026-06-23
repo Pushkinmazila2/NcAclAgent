@@ -1,0 +1,92 @@
+---
+- name: Verify | Ждём запуска агента (до 30 секунд)
+  ansible.windows.win_wait_for:
+    port:    "{{ agent_listen_port }}"
+    host:    "{{ agent_listen_ip }}"
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Verify | Health check через PowerShell
+  ansible.windows.win_powershell:
+    script: |
+      # Игнорируем ошибки сертификата — self-signed в test, mTLS в prod
+      Add-Type @"
+      using System.Net;
+      using System.Security.Cryptography.X509Certificates;
+      public class TrustAll : ICertificatePolicy {
+          public bool CheckValidationResult(ServicePoint sp, X509Certificate cert,
+              WebRequest req, int error) { return true; }
+      }
+      "@
+      [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAll
+
+      try {
+          # Health endpoint не требует Bearer токена (проверяем только доступность)
+          $response = Invoke-WebRequest `
+              -Uri "https://{{ agent_listen_ip }}:{{ agent_listen_port }}/api/acl/health" `
+              -Method GET `
+              -TimeoutSec 10 `
+              -ErrorAction Stop
+
+          $body = $response.Content | ConvertFrom-Json
+          Write-Output "Health check OK: $($response.StatusCode) | status=$($body.status)"
+          $Ansible.Result = @{
+              ok         = $true
+              status     = $response.StatusCode
+              agent_time = $body.timestamp
+          }
+      } catch {
+          Write-Warning "Health check FAILED: $($_.Exception.Message)"
+          $Ansible.Result = @{ ok = $false; error = $_.Exception.Message }
+          $Ansible.Failed = $true
+      }
+  register: health_check
+  when: not ansible_check_mode
+
+- name: Verify | Показываем результат health check
+  ansible.builtin.debug:
+    msg: "{{ health_check.result }}"
+  when:
+    - not ansible_check_mode
+    - health_check.result is defined
+
+- name: Verify | Проверяем Event Log — нет ли SelfTest FAILED
+  ansible.windows.win_powershell:
+    script: |
+      $errors = Get-EventLog `
+          -LogName Application `
+          -Source "{{ agent_eventlog_source }}" `
+          -EntryType Error `
+          -Newest 10 `
+          -After (Get-Date).AddMinutes(-5) `
+          -ErrorAction SilentlyContinue
+
+      if ($errors) {
+          Write-Warning "Обнаружены ошибки в Event Log после деплоя:"
+          $errors | ForEach-Object {
+              Write-Warning "  [$($_.EventID)] $($_.Message)"
+          }
+          $Ansible.Result = @{ errors_found = $true; count = $errors.Count }
+      } else {
+          Write-Output "Event Log чист — ошибок после деплоя нет"
+          $Ansible.Result = @{ errors_found = $false }
+      }
+  register: eventlog_check
+  when: not ansible_check_mode
+
+- name: Verify | Предупреждение если есть ошибки в Event Log
+  ansible.builtin.debug:
+    msg: "ВНИМАНИЕ: в Event Log обнаружены ошибки после деплоя на {{ inventory_hostname }}"
+  when:
+    - not ansible_check_mode
+    - eventlog_check.result is defined
+    - eventlog_check.result.errors_found
+
+- name: Verify | Финальный отчёт
+  ansible.builtin.debug:
+    msg:
+      - "=== Деплой завершён: {{ inventory_hostname }} ==="
+      - "Версия:  {{ agent_version }}"
+      - "Режим:   {{ agent_mode }}"
+      - "Сервис:  {{ agent_service_name }}"
+      - "Слушает: {{ agent_listen_ip }}:{{ agent_listen_port }}"

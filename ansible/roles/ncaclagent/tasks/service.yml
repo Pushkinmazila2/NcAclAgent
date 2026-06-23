@@ -1,0 +1,36 @@
+---
+- name: Service | Устанавливаем Windows Service
+  ansible.windows.win_service:
+    name:         "{{ agent_service_name }}"
+    display_name: "{{ agent_service_display_name }}"
+    description:  "{{ agent_service_description }}"
+    path:         '"{{ agent_install_dir }}\NcAclAgent.Service.exe"'
+    start_mode:   auto
+    state:        started
+    username:     "{{ agent_service_account }}"
+    password:     "{{ agent_service_account_password }}"
+  no_log: true   # Пароль сервисного аккаунта
+  register: service_result
+
+- name: Service | Настраиваем восстановление при сбое (перезапуск)
+  ansible.windows.win_powershell:
+    script: |
+      # Перезапуск: через 30с, 60с, 120с. Сброс счётчика через 24ч.
+      sc.exe failure "{{ agent_service_name }}" `
+        reset= 86400 `
+        actions= restart/30000/restart/60000/restart/120000
+      Write-Output "Настроено автовосстановление для {{ agent_service_name }}"
+
+- name: Service | Убеждаемся что сервис запущен
+  ansible.windows.win_service_info:
+    name: "{{ agent_service_name }}"
+  register: svc_info
+
+- name: Service | Проверяем статус
+  ansible.builtin.assert:
+    that:
+      - svc_info.services | length > 0
+      - svc_info.services[0].state == "running"
+    fail_msg: >
+      Сервис {{ agent_service_name }} не запущен на {{ inventory_hostname }}.
+      Статус: {{ svc_info.services[0].state | default('unknown') }}

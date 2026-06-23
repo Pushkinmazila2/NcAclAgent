@@ -1,0 +1,31 @@
+# .NET build artifacts
+**/bin/
+**/obj/
+publish/
+*.user
+*.suo
+.vs/
+
+# Секреты — НИКОГДА в репо
+# vault.yml файлы должны быть зашифрованы перед коммитом!
+# Незашифрованные vault файлы блокируем:
+ansible/inventory/**/host_vars/*.vault.yml.plaintext
+ansible/roles/ncaclagent/files/certs/**/*.pfx
+ansible/roles/ncaclagent/files/certs/**/*.pem
+ansible/roles/ncaclagent/files/certs/**/*.key
+
+# Но зашифрованные vault.yml — разрешены (начинаются с $ANSIBLE_VAULT)
+# !ansible/inventory/**/host_vars/*.vault.yml  # раскомментировать не нужно — они не в ignore
+
+# Ansible временные файлы
+ansible/*.log
+ansible/.cache/
+/tmp/vault_pass
+
+# Артефакты деплоя
+dist/
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db

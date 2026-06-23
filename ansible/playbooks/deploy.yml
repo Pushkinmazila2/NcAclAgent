@@ -1,0 +1,42 @@
+---
+# Деплой Nextcloud ACL Agent
+#
+# Использование:
+#   ansible-playbook playbooks/deploy.yml \
+#     --inventory inventory/prod/hosts.yml \
+#     --vault-password-file /path/to/vault_pass \
+#     --extra-vars "agent_version=v1.2.3"
+#
+# Dry-run:
+#   ansible-playbook playbooks/deploy.yml ... --check --diff
+
+- name: Deploy Nextcloud ACL Agent
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: false    # Продолжаем деплой на других хостах при ошибке на одном
+
+  pre_tasks:
+    - name: Загружаем vault переменные хоста
+      ansible.builtin.include_vars:
+        file: "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.vault.yml"
+      no_log: true
+
+    - name: Показываем план деплоя
+      ansible.builtin.debug:
+        msg:
+          - "Деплой начат: {{ ansible_date_time.iso8601 }}"
+          - "Версия: {{ agent_version | default('latest') }}"
+          - "Хосты: {{ ansible_play_hosts | join(', ') }}"
+
+  roles:
+    - role: ncaclagent
+
+  post_tasks:
+    - name: Записываем результат деплоя в файл на хосте
+      ansible.windows.win_copy:
+        content: |
+          deployed_version={{ agent_version }}
+          deployed_at={{ ansible_date_time.iso8601 }}
+          deployed_by={{ lookup('env', 'GITHUB_ACTOR') | default(ansible_user_id) }}
+          mode={{ agent_mode }}
+        dest: "{{ agent_config_dir }}\\LAST_DEPLOY"

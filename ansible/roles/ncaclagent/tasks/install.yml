@@ -1,0 +1,38 @@
+---
+- name: Install | Останавливаем сервис перед обновлением (если существует)
+  ansible.windows.win_service:
+    name: "{{ agent_service_name }}"
+    state: stopped
+  ignore_errors: true   # Сервис может не существовать при первом деплое
+
+- name: Install | Ждём остановки сервиса
+  ansible.windows.win_wait_for:
+    timeout: 15
+  when: not ansible_check_mode
+
+- name: Install | Копируем архив на хост
+  ansible.windows.win_copy:
+    src: "NcAclAgent-latest.zip"
+    dest: "{{ agent_config_dir }}\\NcAclAgent-latest.zip"
+
+- name: Install | Распаковываем архив в install dir
+  community.windows.win_unzip:
+    src:  "{{ agent_config_dir }}\\NcAclAgent-latest.zip"
+    dest: "{{ agent_install_dir }}"
+    delete_archive: false   # Оставляем для отката
+
+- name: Install | Убеждаемся что исполняемый файл существует
+  ansible.windows.win_stat:
+    path: "{{ agent_install_dir }}\\NcAclAgent.Service.exe"
+  register: agent_exe
+
+- name: Install | Проверяем наличие бинарника
+  ansible.builtin.assert:
+    that:
+      - agent_exe.stat.exists
+    fail_msg: "Исполняемый файл не найден после распаковки: {{ agent_install_dir }}\\NcAclAgent.Service.exe"
+
+- name: Install | Сохраняем версию в файл (для аудита)
+  ansible.windows.win_copy:
+    content: "{{ agent_version }}\n{{ ansible_date_time.iso8601 }}\n{{ ansible_user_id }}"
+    dest: "{{ agent_config_dir }}\\INSTALLED_VERSION"

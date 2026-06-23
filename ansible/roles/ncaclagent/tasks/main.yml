@@ -1,0 +1,12 @@
+---
+- name: Включаем задачи по порядку
+  ansible.builtin.include_tasks: "{{ item }}"
+  loop:
+    - preflight.yml
+    - directories.yml
+    - install.yml
+    - certificate.yml
+    - configure.yml
+    - service.yml
+    - firewall.yml
+    - verify.yml

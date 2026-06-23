@@ -1,0 +1,30 @@
+---
+# Переменные общие для всех окружений
+
+# Пути установки на Windows хосте
+agent_install_dir:  'C:\Program Files\NcAclAgent'
+agent_config_dir:   'C:\ProgramData\NcAclAgent'
+agent_cert_dir:     'C:\ProgramData\NcAclAgent\certs'
+agent_log_dir:      'C:\ProgramData\NcAclAgent\logs'
+
+# Имя Windows Service
+agent_service_name:         "NextcloudAclAgent"
+agent_service_display_name: "Nextcloud ACL Agent"
+agent_service_description:  "Управление NTFS ACL по командам из Nextcloud"
+
+# Event Log
+agent_eventlog_source: "NextcloudAclAgent"
+agent_eventlog_log:    "Application"
+
+# Rate limit (общие разумные дефолты)
+agent_rate_limit:
+  requests_per_second:     10
+  acl_changes_per_minute:  50
+  block_duration_minutes:  5
+
+# Security defaults
+agent_max_path_depth: 5
+agent_required_eku:   "1.3.6.1.5.5.7.3.2"
+
+# Версия — переопределяется при деплое через --extra-vars
+agent_version: "latest"

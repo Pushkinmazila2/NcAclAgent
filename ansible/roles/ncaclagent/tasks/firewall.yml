@@ -1,0 +1,26 @@
+---
+- name: Firewall | Удаляем старое правило если есть
+  community.windows.win_firewall_rule:
+    name:  "NcAclAgent Inbound HTTPS"
+    state: absent
+
+- name: Firewall | Создаём правило — только Domain profile, только порт агента
+  community.windows.win_firewall_rule:
+    name:         "NcAclAgent Inbound HTTPS"
+    localport:    "{{ agent_listen_port }}"
+    action:       allow
+    direction:    in
+    protocol:     tcp
+    profiles:     domain        # Только Domain — не Public, не Private
+    description:  "Nextcloud ACL Agent — входящие HTTPS от Nextcloud сервера"
+    enabled:      true
+    state:        present
+
+# Опциональное дополнительное ограничение по RemoteIP
+# Если задана переменная agent_nextcloud_ip — ограничиваем только им
+- name: Firewall | Ограничиваем RemoteAddress IP-адресом Nextcloud
+  community.windows.win_firewall_rule:
+    name:         "NcAclAgent Inbound HTTPS"
+    remoteip:     "{{ agent_nextcloud_ip }}"
+    state:        present
+  when: agent_nextcloud_ip is defined and agent_nextcloud_ip | length > 0

@@ -1,0 +1,6 @@
+---
+- name: Restart NcAclAgent
+  ansible.windows.win_service:
+    name:  "{{ agent_service_name }}"
+    state: restarted
+  listen: "Restart NcAclAgent"

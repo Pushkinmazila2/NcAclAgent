@@ -1,0 +1,84 @@
+{
+  "_managed_by":  "Ansible — не редактировать вручную",
+  "_deployed_at": "{{ ansible_date_time.iso8601 }}",
+  "_version":     "{{ agent_version }}",
+  "Agent": {
+    "Listen": {
+      "IpAddress":           "{{ agent_listen_ip }}",
+      "Port":                {{ agent_listen_port }},
+      "CertificatePath":     "{{ agent_cert_dir | replace('\\', '\\\\') }}\\\\agent.pfx",
+      "CertificatePassword": "{{ agent_cert_password }}"
+    },
+    "Security": {
+      "BearerToken": "{{ agent_bearer_token }}",
+      "ClientCertificate": {
+        "TrustedCaThumbprint":    "{{ agent_ca_thumbprint }}",
+        "Thumbprint":             "{{ agent_client_cert_thumbprint | default('') }}",
+        "RequiredEku":            "{{ agent_required_eku }}",
+        "AllowExpiredInTestMode": {{ agent_allow_expired_cert_in_test | lower }}
+      },
+      "ProtectedGroups": [
+{% for g in agent_protected_groups %}
+        "{{ g }}"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ],
+      "MaxPathDepth": {{ agent_max_path_depth }}
+    },
+    "Paths": {
+      "Allowed": [
+{% for p in agent_allowed_paths %}
+        "{{ p | replace('\\', '\\\\') }}"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ],
+      "Denied": [
+{% for p in agent_denied_paths %}
+        "{{ p | replace('\\', '\\\\') }}"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ]
+    },
+    "NcAdminGroups": {
+      "Groups": [
+{% for g in agent_nc_admin_groups %}
+        "{{ g }}"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ]
+    },
+    "AdManagerDelegation": {
+      "Enabled":  {{ agent_manager_delegation_enabled | lower }},
+      "MaxDepth": {{ agent_manager_delegation_depth }}
+    },
+    "AdGroupManagement": {
+      "RootOUs": [
+{% for mapping in agent_root_ous %}
+        {
+          "Share": "{{ mapping.share | replace('\\', '\\\\') }}",
+          "OU":    "{{ mapping.ou }}"
+        }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ],
+      "GroupPrefix":         "{{ agent_group_prefix }}",
+      "PathAttribute":       "{{ agent_path_attribute }}",
+      "NtfsFileIdAttribute": "{{ agent_ntfs_fileid_attribute }}"
+    },
+    "RateLimit": {
+      "RequestsPerSecond":    {{ agent_rate_limit.requests_per_second }},
+      "AclChangesPerMinute":  {{ agent_rate_limit.acl_changes_per_minute }},
+      "BlockDurationMinutes": {{ agent_rate_limit.block_duration_minutes }}
+    },
+    "EventLog": {
+      "Source":  "{{ agent_eventlog_source }}",
+      "LogName": "{{ agent_eventlog_log }}"
+    }
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default":            "{{ 'Debug' if agent_mode == 'Test' else 'Information' }}",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}

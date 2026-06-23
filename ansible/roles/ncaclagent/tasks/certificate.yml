@@ -1,0 +1,56 @@
+---
+# Сертификаты хранятся в ansible/roles/ncaclagent/files/certs/<hostname>/
+# Структура:
+#   files/certs/fileserver01.company.local/agent.pfx   — серверный сертификат агента
+#   files/certs/fileserver01.company.local/nc-ca.pem   — публичный CA сертификат NC (для инфо)
+
+- name: Certificate | Проверяем наличие PFX для этого хоста
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/certs/{{ inventory_hostname }}/agent.pfx"
+  register: pfx_file
+  delegate_to: localhost
+
+- name: Certificate | Прерываем если PFX не найден
+  ansible.builtin.assert:
+    that:
+      - pfx_file.stat.exists
+    fail_msg: >
+      PFX сертификат не найден для {{ inventory_hostname }}.
+      Ожидается: ansible/roles/ncaclagent/files/certs/{{ inventory_hostname }}/agent.pfx
+
+- name: Certificate | Копируем PFX на хост
+  ansible.windows.win_copy:
+    src:  "certs/{{ inventory_hostname }}/agent.pfx"
+    dest: "{{ agent_cert_dir }}\\agent.pfx"
+  no_log: true   # Не логируем — бинарный секрет
+  notify: Restart NcAclAgent
+
+- name: Certificate | Проверяем сертификат в Windows Certificate Store (опционально)
+  ansible.windows.win_powershell:
+    script: |
+      $pfxPath = "{{ agent_cert_dir }}\agent.pfx"
+      $pwd = ConvertTo-SecureString "{{ agent_cert_password }}" -AsPlainText -Force
+      try {
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
+              $pfxPath, $pwd)
+          $daysLeft = ($cert.NotAfter - (Get-Date)).Days
+          Write-Output "OK: Сертификат действителен до $($cert.NotAfter), осталось $daysLeft дней"
+          if ($daysLeft -lt 30) {
+              Write-Warning "Сертификат истекает через $daysLeft дней!"
+          }
+          $Ansible.Result = @{
+              valid     = $true
+              not_after = $cert.NotAfter.ToString("O")
+              days_left = $daysLeft
+          }
+      } catch {
+          $Ansible.Result = @{ valid = $false; error = $_.Exception.Message }
+          $Ansible.Failed = $true
+      }
+  no_log: true
+  register: cert_check
+
+- name: Certificate | Показываем статус сертификата
+  ansible.builtin.debug:
+    msg: "{{ cert_check.result }}"
+  when: cert_check.result is defined

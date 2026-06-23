@@ -1,0 +1,16 @@
+---
+# Test окружение
+
+agent_mode: "Test"
+
+# В test разрешаем просроченные сертификаты для удобства разработки
+agent_allow_expired_cert_in_test: true
+
+# Мягкий rate limit для тестирования
+agent_rate_limit:
+  requests_per_second:     50
+  acl_changes_per_minute:  200
+  block_duration_minutes:  1
+
+agent_protected_groups:
+  - "LAB\\Domain Admins"

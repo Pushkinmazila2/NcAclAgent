@@ -1,0 +1,40 @@
+---
+- name: Directories | Создаём директории агента
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ agent_install_dir }}"
+    - "{{ agent_config_dir }}"
+    - "{{ agent_cert_dir }}"
+    - "{{ agent_log_dir }}"
+
+- name: Directories | Права на config dir — только сервисный аккаунт и Administrators
+  ansible.windows.win_acl:
+    path: "{{ agent_config_dir }}"
+    user: "{{ agent_service_account }}"
+    rights: ReadAndExecute
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+    propagation: None
+
+- name: Directories | Права на cert dir — только сервисный аккаунт (читает PFX)
+  ansible.windows.win_acl:
+    path: "{{ agent_cert_dir }}"
+    user: "{{ agent_service_account }}"
+    rights: Read
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+    propagation: None
+
+- name: Directories | Права на install dir — сервисный аккаунт только Execute
+  ansible.windows.win_acl:
+    path: "{{ agent_install_dir }}"
+    user: "{{ agent_service_account }}"
+    rights: ReadAndExecute
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+    propagation: None

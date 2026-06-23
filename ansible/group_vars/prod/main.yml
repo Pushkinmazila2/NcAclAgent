@@ -1,0 +1,20 @@
+---
+# Prod окружение
+
+agent_mode: "Prod"
+
+# В prod — сертификат от доверенного CA, не самоподписанный
+agent_allow_expired_cert_in_test: false
+
+# В prod — более строгий rate limit
+agent_rate_limit:
+  requests_per_second:     5
+  acl_changes_per_minute:  30
+  block_duration_minutes:  10
+
+# Группы защищённые по умолчанию для всего prod
+# Дополняются на уровне host_vars если нужно
+agent_protected_groups:
+  - "COMPANY\\Domain Admins"
+  - "COMPANY\\Enterprise Admins"
+  - "COMPANY\\Schema Admins"

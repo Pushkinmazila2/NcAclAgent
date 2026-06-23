@@ -1,0 +1,57 @@
+---
+- name: Configure | Генерируем appsettings.json из шаблона
+  ansible.windows.win_template:
+    src:  appsettings.json.j2
+    dest: "{{ agent_install_dir }}\\appsettings.json"
+  no_log: true     # Файл содержит секреты (bearer token, cert password)
+  notify: Restart NcAclAgent
+
+- name: Configure | Устанавливаем env переменную NCACL_MODE
+  ansible.windows.win_environment:
+    name:  NCACL_MODE
+    value: "{{ agent_mode }}"
+    level: machine
+    state: present
+  notify: Restart NcAclAgent
+
+- name: Configure | В Prod — секреты через env переменные (не из файла)
+  when: agent_mode == "Prod"
+  block:
+    - name: Configure | NCACL_AGENT__SECURITY__BEARERTOKEN
+      ansible.windows.win_environment:
+        name:  NCACL_AGENT__SECURITY__BEARERTOKEN
+        value: "{{ agent_bearer_token }}"
+        level: machine
+        state: present
+      no_log: true
+      notify: Restart NcAclAgent
+
+    - name: Configure | NCACL_AGENT__SECURITY__CLIENTCERTIFICATE__TRUSTEDCATHUMBPRINT
+      ansible.windows.win_environment:
+        name:  NCACL_AGENT__SECURITY__CLIENTCERTIFICATE__TRUSTEDCATHUMBPRINT
+        value: "{{ agent_ca_thumbprint }}"
+        level: machine
+        state: present
+      no_log: true
+      notify: Restart NcAclAgent
+
+    - name: Configure | NCACL_AGENT__LISTEN__CERTIFICATEPASSWORD
+      ansible.windows.win_environment:
+        name:  NCACL_AGENT__LISTEN__CERTIFICATEPASSWORD
+        value: "{{ agent_cert_password }}"
+        level: machine
+        state: present
+      no_log: true
+      notify: Restart NcAclAgent
+
+- name: Configure | Регистрируем Event Log source
+  ansible.windows.win_powershell:
+    script: |
+      $source  = "{{ agent_eventlog_source }}"
+      $logName = "{{ agent_eventlog_log }}"
+      if (-not [System.Diagnostics.EventLog]::SourceExists($source)) {
+          [System.Diagnostics.EventLog]::CreateEventSource($source, $logName)
+          Write-Output "Создан Event Log source: $source"
+      } else {
+          Write-Output "Event Log source уже существует: $source"
+      }

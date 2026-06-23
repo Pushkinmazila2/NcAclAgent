@@ -1,0 +1,22 @@
+---
+# host_vars/fileserver01.company.local.yml
+#
+# Незашифрованные переменные хоста.
+# Секреты — в vault.yml рядом с этим файлом (зашифровано ansible-vault).
+
+# Ссылаемся на vault переменные
+ansible_password:               "{{ vault_ansible_password }}"
+agent_bearer_token:             "{{ vault_agent_bearer_token }}"
+agent_cert_password:            "{{ vault_agent_cert_password }}"
+agent_ca_thumbprint:            "{{ vault_agent_ca_thumbprint }}"
+agent_service_account_password: "{{ vault_agent_service_account_password }}"
+
+# Незашифрованные — специфика этого сервера
+agent_protected_groups:
+  - "COMPANY\\Domain Admins"
+  - "COMPANY\\Enterprise Admins"
+  - "COMPANY\\Schema Admins"
+  - "COMPANY\\Finance-Directors"    # Дополнительная группа для этого сервера
+
+# Leaf сертификат NC (thumbprint) — не секрет, но специфичен для хоста
+agent_client_cert_thumbprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD"

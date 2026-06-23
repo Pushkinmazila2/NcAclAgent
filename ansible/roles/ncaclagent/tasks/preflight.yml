@@ -1,0 +1,51 @@
+---
+- name: Preflight | Проверяем что целевой хост Windows Server
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Windows"
+    fail_msg: "Роль поддерживает только Windows. Хост: {{ inventory_hostname }}"
+
+- name: Preflight | Проверяем что агент запускается от доменного аккаунта
+  ansible.builtin.assert:
+    that:
+      - agent_service_account is defined
+      - agent_service_account | length > 0
+      - '"\\" in agent_service_account'
+    fail_msg: >
+      agent_service_account должен быть в формате DOMAIN\\User.
+      Получено: '{{ agent_service_account | default("не задан") }}'
+
+- name: Preflight | Проверяем обязательные секреты
+  ansible.builtin.assert:
+    that:
+      - agent_bearer_token is defined
+      - agent_bearer_token | length >= 32
+      - agent_ca_thumbprint is defined
+      - agent_ca_thumbprint | length > 0
+      - agent_cert_password is defined
+      - agent_service_account_password is defined
+    fail_msg: "Не все обязательные vault-переменные заданы для {{ inventory_hostname }}"
+  no_log: true   # Не логируем — там секреты
+
+- name: Preflight | Проверяем что Allowed paths заданы
+  ansible.builtin.assert:
+    that:
+      - agent_allowed_paths | length > 0
+    fail_msg: "agent_allowed_paths пуст для {{ inventory_hostname }}"
+
+- name: Preflight | Проверяем IP агента (не 0.0.0.0)
+  ansible.builtin.assert:
+    that:
+      - agent_listen_ip != "0.0.0.0"
+      - agent_listen_ip != "::"
+    fail_msg: "agent_listen_ip не может быть 0.0.0.0 ({{ inventory_hostname }})"
+
+- name: Preflight | Показываем параметры деплоя
+  ansible.builtin.debug:
+    msg:
+      - "Хост:    {{ inventory_hostname }}"
+      - "Режим:   {{ agent_mode }}"
+      - "Версия:  {{ agent_version }}"
+      - "IP:      {{ agent_listen_ip }}:{{ agent_listen_port }}"
+      - "Сервис аккаунт: {{ agent_service_account }}"
+      - "Allowed paths:  {{ agent_allowed_paths }}"

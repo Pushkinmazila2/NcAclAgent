@@ -1,0 +1,109 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия для деплоя (тег, например v1.2.3)'
+        required: true
+        type: string
+      environment:
+        description: 'Окружение'
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+      limit:
+        description: 'Ограничить хосты (ansible --limit). Пусто = все хосты окружения'
+        required: false
+        type: string
+
+# Защита prod окружения — требует ручного одобрения (настраивается в Settings → Environments)
+environment: ${{ github.event.inputs.environment }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.event.inputs.version }} → ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout репо (ansible playbooks)
+        uses: actions/checkout@v4
+
+      - name: Скачиваем релиз с GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          ARTIFACT="NcAclAgent-${VERSION#v}-win-x64.zip"
+
+          echo "Скачиваем: ${ARTIFACT} из релиза ${VERSION}"
+          gh release download "${VERSION}" \
+            --pattern "${ARTIFACT}" \
+            --dir ./dist
+
+          ls -lh ./dist/
+
+      - name: Устанавливаем Ansible
+        run: |
+          pip install --upgrade pip
+          pip install ansible pywinrm
+
+      - name: Распаковываем Ansible Vault password
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/vault_pass
+          chmod 600 /tmp/vault_pass
+
+      - name: Настраиваем SSH ключ для подключения к Windows хостам
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Отключаем StrictHostKeyChecking для CI (хосты прописаны в known_hosts через инвентарь)
+          cat >> ~/.ssh/config << 'EOF'
+          Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            IdentityFile ~/.ssh/id_ed25519
+          EOF
+
+      - name: Копируем артефакт в ansible/files
+        run: |
+          cp dist/*.zip ansible/roles/ncaclagent/files/NcAclAgent-latest.zip
+
+      - name: Ansible dry-run (check mode)
+        working-directory: ansible
+        run: |
+          LIMIT_ARG=""
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            LIMIT_ARG="--limit ${{ github.event.inputs.limit }}"
+          fi
+
+          ansible-playbook playbooks/deploy.yml \
+            --inventory inventory/${{ github.event.inputs.environment }}/hosts.yml \
+            --vault-password-file /tmp/vault_pass \
+            --extra-vars "agent_version=${{ github.event.inputs.version }}" \
+            --check \
+            --diff \
+            $LIMIT_ARG
+
+      - name: Ansible deploy
+        working-directory: ansible
+        run: |
+          LIMIT_ARG=""
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            LIMIT_ARG="--limit ${{ github.event.inputs.limit }}"
+          fi
+
+          ansible-playbook playbooks/deploy.yml \
+            --inventory inventory/${{ github.event.inputs.environment }}/hosts.yml \
+            --vault-password-file /tmp/vault_pass \
+            --extra-vars "agent_version=${{ github.event.inputs.version }}" \
+            $LIMIT_ARG
+
+      - name: Очищаем секреты
+        if: always()
+        run: |
+          rm -f /tmp/vault_pass
+          rm -f ~/.ssh/id_ed25519

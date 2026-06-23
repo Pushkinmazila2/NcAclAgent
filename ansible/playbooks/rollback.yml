@@ -1,0 +1,43 @@
+---
+# Откат агента на предыдущую версию
+#
+# Использование:
+#   ansible-playbook playbooks/rollback.yml \
+#     --inventory inventory/prod/hosts.yml \
+#     --vault-password-file /path/to/vault_pass \
+#     --extra-vars "agent_version=v1.1.0"
+#
+# Rollback = тот же деплой но с другой версией.
+# Ansible скачает нужный релиз из GitHub перед запуском.
+
+- name: Rollback Nextcloud ACL Agent
+  hosts: all
+  gather_facts: true
+
+  pre_tasks:
+    - name: Загружаем vault
+      ansible.builtin.include_vars:
+        file: "{{ inventory_dir }}/host_vars/{{ inventory_hostname }}.vault.yml"
+      no_log: true
+
+    - name: Читаем текущую версию
+      ansible.windows.win_shell: type "{{ agent_config_dir }}\INSTALLED_VERSION"
+      register: current_version
+      ignore_errors: true
+
+    - name: Показываем план отката
+      ansible.builtin.debug:
+        msg:
+          - "ROLLBACK: {{ inventory_hostname }}"
+          - "Текущая версия: {{ current_version.stdout_lines[0] | default('неизвестна') }}"
+          - "Откат на:       {{ agent_version }}"
+
+    - name: Подтверждение (только в prod, при ручном запуске)
+      ansible.builtin.pause:
+        prompt: "Подтверждаете откат на {{ agent_version }} для {{ inventory_hostname }}? (yes/no)"
+      when:
+        - agent_mode == "Prod"
+        - lookup('env', 'CI') == ""   # Не в CI
+
+  roles:
+    - role: ncaclagent

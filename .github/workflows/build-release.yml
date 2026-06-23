@@ -1,0 +1,177 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'          # Триггер только на теги вида v1.2.3f
+  workflow_dispatch:      # Ручной запуск для тестирования pipeline
+    inputs:
+      prerelease:
+        description: 'Пометить как pre-release'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/NcAclAgent.Api/NcAclAgent.Api.csproj'
+  PUBLISH_DIR: 'publish'
+  ARTIFACT_NAME: 'NcAclAgent'
+
+jobs:
+  # ── Сборка и тесты ────────────────────────────────────────────────
+  build:
+    name: Build (win-x64, self-contained)
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact_name: ${{ steps.artifact.outputs.name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Нужно для git describe
+
+      - name: Определяем версию
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            # Для ручного запуска берём дату + короткий SHA
+            VERSION="0.0.0-dev.$(date +%Y%m%d).$(git rev-parse --short HEAD)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Версия: ${VERSION}"
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore NcAclAgent.sln
+
+      - name: Build (проверка компиляции)
+        run: |
+          dotnet build NcAclAgent.sln \
+            --configuration Release \
+            --no-restore \
+            -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Run tests
+        run: |
+          dotnet test NcAclAgent.sln \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./test-results
+        continue-on-error: false
+
+      - name: Публикуем test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: .NET Tests
+          path: test-results/*.trx
+          reporter: dotnet-trx
+
+      - name: Publish — win-x64 self-contained
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.version }} \
+            --output ${{ env.PUBLISH_DIR }}
+
+      - name: Копируем конфиги и скрипты в артефакт
+        run: |
+          # Конфиги (без секретов — только структура)
+          cp src/NcAclAgent.Api/appsettings.json          ${{ env.PUBLISH_DIR }}/
+          cp src/NcAclAgent.Api/appsettings.Prod.json     ${{ env.PUBLISH_DIR }}/
+          cp src/NcAclAgent.Api/appsettings.Test.json     ${{ env.PUBLISH_DIR }}/
+
+          # PowerShell установщик для Test режима
+          cp installer/Install-NcAclAgent.ps1             ${{ env.PUBLISH_DIR }}/
+
+          # README
+          cp README.md                                     ${{ env.PUBLISH_DIR }}/
+
+      - name: Создаём архив
+        id: artifact
+        run: |
+          ARTIFACT="${{ env.ARTIFACT_NAME }}-${{ steps.version.outputs.version }}-win-x64"
+          cd ${{ env.PUBLISH_DIR }}
+          zip -r "../${ARTIFACT}.zip" .
+          echo "name=${ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "Архив: ${ARTIFACT}.zip"
+          ls -lh "../${ARTIFACT}.zip"
+
+      - name: Загружаем артефакт (между jobs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: ${{ steps.artifact.outputs.name }}.zip
+          retention-days: 7
+
+  # ── Публикация GitHub Release ────────────────────────────────────
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+
+    permissions:
+      contents: write   # Нужно для создания релиза
+
+    steps:
+      - name: Checkout (для release notes из CHANGELOG)
+        uses: actions/checkout@v4
+
+      - name: Скачиваем артефакт
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ./dist
+
+      - name: Генерируем release notes из git log
+        id: notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
+          else
+            NOTES=$(git log --pretty=format:"- %s (%h)" --no-merges | head -20)
+          fi
+          # Записываем в файл (избегаем проблем с многострочным output)
+          echo "${NOTES}" > release-notes.md
+          echo "Изменения:" && cat release-notes.md
+
+      - name: Создаём GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "NcAclAgent ${{ needs.build.outputs.version }}"
+          body_path: release-notes.md
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          files: |
+            dist/${{ needs.build.outputs.artifact_name }}.zip
+          generate_release_notes: false
+
+  # ── Уведомление о провале ─────────────────────────────────────────
+  notify-failure:
+    name: Уведомление о провале
+    runs-on: ubuntu-latest
+    needs: [build, release]
+    if: failure()
+    steps:
+      - name: Пишем в лог (здесь можно добавить Slack/Teams webhook)
+        run: |
+          echo "::error::Pipeline провалился для тега ${{ github.ref_name }}"
+          echo "Коммит: ${{ github.sha }}"
+          echo "Автор: ${{ github.actor }}"

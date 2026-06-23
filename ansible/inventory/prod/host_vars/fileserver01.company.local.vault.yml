@@ -1,0 +1,14 @@
+---
+# ЭТОТ ФАЙЛ ДОЛЖЕН БЫТЬ ЗАШИФРОВАН:
+# ansible-vault encrypt inventory/prod/host_vars/fileserver01.company.local.vault.yml
+#
+# Для редактирования:
+# ansible-vault edit inventory/prod/host_vars/fileserver01.company.local.vault.yml
+#
+# В репо хранится только зашифрованная версия ($ANSIBLE_VAULT;1.1;AES256;...)
+
+vault_ansible_password:               "REPLACE_ansible_ssh_password"
+vault_agent_bearer_token:             "REPLACE_64_char_random_token_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+vault_agent_cert_password:            "REPLACE_pfx_certificate_password"
+vault_agent_ca_thumbprint:            "REPLACE_CA_THUMBPRINT_HEX"
+vault_agent_service_account_password: "REPLACE_service_account_password"
