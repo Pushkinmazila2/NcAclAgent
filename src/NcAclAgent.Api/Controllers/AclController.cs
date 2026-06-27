@@ -14,7 +14,7 @@ public class AclController : ControllerBase
     private readonly ILogger<AclController>  _logger;
     private readonly AgentConfiguration      _config;
 
-    public AclController(IAclService aclService, IRateLimiter rateLimiter, ILogger<AclController> logger, IOptions<AgentConfiguration> config))
+    public AclController(IAclService aclService, IRateLimiter rateLimiter, ILogger<AclController> logger, IOptions<AgentConfiguration> config)
     {
         _aclService  = aclService;
         _rateLimiter = rateLimiter;
