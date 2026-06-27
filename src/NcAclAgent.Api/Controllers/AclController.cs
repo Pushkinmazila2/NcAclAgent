@@ -12,12 +12,14 @@ public class AclController : ControllerBase
     private readonly IAclService             _aclService;
     private readonly IRateLimiter            _rateLimiter;
     private readonly ILogger<AclController>  _logger;
+    private readonly AgentConfiguration      _config;
 
-    public AclController(IAclService aclService, IRateLimiter rateLimiter, ILogger<AclController> logger)
+    public AclController(IAclService aclService, IRateLimiter rateLimiter, ILogger<AclController> logger, IOptions<AgentConfiguration> config))
     {
         _aclService  = aclService;
         _rateLimiter = rateLimiter;
         _logger      = logger;
+        _config      = config.Value;
     }
 
     /// <summary>GET /api/acl?path=\\SERVER\Share\Folder</summary>
@@ -115,7 +117,8 @@ public class AclController : ControllerBase
     {
         status    = "ok",
         timestamp = DateTimeOffset.UtcNow,
-        version   = "1.0.0"
+        version   = "1.0.0",
+        mode      = _config.Mode.ToString()
     });
 
     private string GetRequestId() =>
