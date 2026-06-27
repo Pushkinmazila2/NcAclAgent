@@ -1,6 +1,7 @@
 # Nextcloud ACL Agent
 
 Windows-агент для управления NTFS ACL по командам из Nextcloud плагина.
+https://github.com/Pushkinmazila2/NextcloudACLmanager
 
 ## Структура монорепо
 
